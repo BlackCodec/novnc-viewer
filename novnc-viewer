@@ -1,0 +1,60 @@
+#!/bin/bash
+### RELEASE: 20240625.1130
+
+### constants
+first_port=6001
+close_timeout=300
+browser_cmd="firefox"
+novnc_cmd="novnc_proxy"
+
+# Read input variable
+destination="${1}"
+debug="${2}"
+
+# check if debug option is required
+[[ "${destination}" == "-d" ]] || [[ "${destination}" == "--debug" ]] && debug=1 && destination="${2}"
+[[ -z "${debug}" ]] && debug=0
+[[ "${debug}" == "-d" ]] || [[ "${debug}" == "--debug" ]] && debug=1
+
+
+### Functions
+
+# Print usage message
+function showHelp() {
+  echo "Usage: ${0} <target_ip>:<target_port> [-d|--debug]"
+  echo
+  echo " -d or --debug: enable debug messages"
+  exit 0
+}
+
+# Search for a free port
+function searchFreePort() {
+  local check_port=${1}
+  [[ -z ${check_port} ]] && check_port=${first_port}
+  [[ ${debug} == 1 ]] && echo "Check port ${check_port}"
+  while (lsof -Pi :${check_port}); do
+    ((check_port++))
+  done
+  echo ${check_port}
+}
+
+# Start a server
+# before start the server call searchFreePort for obtain a free port
+function startServer() {
+  local remote_target="${1}"
+  [[ ${debug} == 1 ]] && echo "Remote target: ${remote_target}"
+  local local_port;
+  local_port=$(searchFreePort ${first_port} | tail -n 1)
+  [[ ${debug} == 1 ]] && echo "Start server on port ${local_port}"
+  ${novnc_cmd} --vnc ${remote_target} --listen localhost:${local_port} --timeout ${close_timeout} > /tmp/vnc-${local_port}.log &
+  sleep 5
+  lsof -Pi :${local_port} && ${browser_cmd} localhost:${local_port} || ( [[ ${debug} == 1 ]] && echo "Error, check log at /tmp/vnc-${local_port}.log"  && exit 1 )
+}
+
+### Main
+# if destination is not specified print help message
+[[ -z "${destination}" ]] && showHelp
+[[ ${debug} == 1 ]] && echo "Start server for connect to ${destination}"
+startServer "${destination}"
+[[ ${debug} == 1 ]] && echo "Started"
+exit 0
